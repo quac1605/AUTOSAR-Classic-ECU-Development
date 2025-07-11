@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "port_cfg.h": "c",
+        "adc.h": "c",
+        "dio.h": "c"
+    }
+}
