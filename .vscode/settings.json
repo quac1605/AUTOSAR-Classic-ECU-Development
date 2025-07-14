@@ -3,6 +3,12 @@
         "*.ejs": "html",
         "port_cfg.h": "c",
         "adc.h": "c",
-        "dio.h": "c"
-    }
+        "dio.h": "c",
+        "port.h": "c",
+        "stm32f10x.h": "c",
+        "stm32f10x_rcc.h": "c",
+        "std_types.h": "c",
+        "stm32f10x_gpio.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }
