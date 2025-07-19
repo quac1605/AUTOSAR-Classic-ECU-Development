@@ -276,12 +276,30 @@ void Adc_GetVersionInfo (Std_VersionInfoType* VersionInfo)
 
 void Adc_EnableGroupNotification(Adc_GroupType Group){
 
-    Adc_Hw_EnableNotification(Group);
+    const Adc_GroupConfigType* cfg = &AdcGroupConfig[Group];
+    ADC_ITConfig(cfg->ADCx, ADC_IT_EOC, ENABLE);
+    NVIC_EnableIRQ(ADC1_2_IRQn);
 }
 
 void Adc_DisableGroupNotification(Adc_GroupType Group){
 
     Adc_Hw_DisableNotification(Group);
+}
+
+void Adc_IsrHandler(ADC_TypeDef* ADCx)
+{
+    for (uint8_t i = 0; i < ADC_NUM_GROUPS; i++) {
+        const Adc_GroupConfigType* cfg = &AdcGroupConfig[i];
+        if (cfg->ADCx != ADCx) continue;
+        if (ADC_GetITStatus(ADCx, ADC_IT_EOC)) {
+            uint16_t val = ADC_GetConversionValue(ADCx);
+            // Ghi val vào buffer (single/streaming, tuỳ thiết kế)
+            ADC_ClearITPendingBit(ADCx, ADC_IT_EOC);
+            if (cfg->NotificationCb) {
+                cfg->NotificationCb(); đây chính là con trỏ hàm được đăng ký ở trên
+            }
+        }
+    }
 }
 
 
