@@ -4,10 +4,10 @@
  */
 
 #include "Adc.h"
-#include "Adc_Cfg.h"
 #include "Port.h"
 #include "stm32f10x.h"
 #include <stddef.h>
+#include "Adc_Cfg.h"
 #include "stm32f10x_adc.h"
 #include "stm32f10x_rcc.h"
 
@@ -38,7 +38,6 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);  // DMA1 for ADC1/ADC2
 
     // Select ADC instance
-
     ADC_TypeDef* adcInstance = NULL;
     if (ConfigPtr->Instance == ADC_1) {
         adcInstance = ADC1;
@@ -47,6 +46,8 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
     } else {
         return; // Invalid ADC instance
     }
+
+    Adc_DeInit(adcInstance); // Reset ADC peripheral
 
     // Configure all channel GPIOs 
     for (uint8 i = 0; i < ConfigPtr->numChannels; i++) {
@@ -64,7 +65,7 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
     // Initialize ADC peripheral
     ADC_InitStruct.ADC_Mode = ADC_Mode_Independent; // Independent mode for ADC1/ADC2
     ADC_InitStruct.ADC_ContinuousConvMode = (ConfigPtr->ConvMode == ADC_CONV_MODE_CONTINUOUS) ? ENABLE : DISABLE; // Single channel conversion
-    ADC_InitStruct.ADC_ScanConvMode = DISABLE; // Single channel
+    ADC_InitStruct.ADC_ScanConvMode = ENABLE; 
     ADC_InitStruct.ADC_ExternalTrigConv = (ConfigPtr->TriggerSource == ADC_TRIGG_SRC_SW) ? ADC_ExternalTrigConv_None : ADC_ExternalTrigConv_T1_CC1; // No external trigger
     ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right;
 
@@ -78,17 +79,11 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
 
         if (ConfigPtr->Instance == ADC_1) {
             // ADC1 channels are 0–15
-            ADC_RegularChannelConfig(adcInstance,
-                                     chanId,
-                                     rank,
-                                     samp);
+            ADC_RegularChannelConfig(adcInstance, chanId, rank, samp);
         } else {
             // ADC2 channels are 16–31
-            ADC_RegularChannelConfig(adcInstance,
-                                     chanId - 16,
-                                     rank,
-                                     samp);
-        }
+            ADC_RegularChannelConfig(adcInstance, chanId - 16, rank, samp);
+       23 }
     }
 
     //Turn on ADC
@@ -140,6 +135,7 @@ void Adc_StartGroupConversion(Adc_GroupType Group){
     ADC_TypeDef* adcInstance = (channel <= 15) ? ADC1 : ADC2;
 
     // Start conversion
+    const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[Group];
     ADC_SoftwareStartConvCmd(adcInstance, ENABLE);
 
     // Update group status
@@ -157,6 +153,7 @@ void Adc_StopGroupConversion(Adc_GroupType Group){
     ADC_TypeDef* adcInstance = (channel <= 15) ? ADC1 : ADC2;
 
     // Stop conversion
+    const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[Group];
     ADC_SoftwareStartConvCmd(adcInstance, DISABLE);
 
     // Update group status
