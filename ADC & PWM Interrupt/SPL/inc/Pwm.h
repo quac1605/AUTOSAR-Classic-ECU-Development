@@ -18,8 +18,16 @@
 #include "Port.h"
 #include "Dio.h"
 
-typedef void (*Pwm_NotificationCbType)(void);
+#define PWM_VENDOR_ID         1234
+#define PWM_MODULE_ID         5678
+#define PWM_SW_MAJOR_VERSION  1
+#define PWM_SW_MINOR_VERSION  0
+#define PWM_SW_PATCH_VERSION  0
 
+// Servo pulse specs from the SG90 datasheet:
+#define SERVO_MIN_PULSE_US   600u    /**<  0° →  0.6 ms  */
+#define SERVO_MAX_PULSE_US  2400u    /**< 180° →  2.4 ms  */
+#define SERVO_CENTER_PULSE_US 1500u  /**<  90° →  1.5 ms  */
 /** Logical identifier for an PWM channel 0 -> 15 */
 typedef uint8 Pwm_ChannelType;
 
@@ -49,15 +57,13 @@ typedef enum {
  * @brief Configuration structure for a PWM channel
  */
 typedef struct {
-    TIM_TypeDef* *TIMx; /**< Function to get the TIM instance for the channel */
     Pwm_ChannelType Channel;            /**< Channel number (0-15) */
     Pwm_ChannelClassType classType;     /**< Class of the PWM channel */
     Pwm_PeriodType defaultPeriode;      /**< Period of the PWM channel */
     uint16 compareValue;                /**< Compare value for the PWM channel */
     Pwm_OutputStateType polarity;       /**< Polarity of the PWM channel output */
     Pwm_OutputStateType idleState;      /**< Idle state of the PWM channel output */
-    uint8 notificationEnable;           /**< Enable notification for the PWM channel */
-    Pwm_NotificationCbType NotificationCb;
+    void (*Notification)(void);         /**< Callback to the notification function */
 } Pwm_ChannelConfigType;
 
 
@@ -125,6 +131,4 @@ void Pwm_EnableNotification(Pwm_ChannelType ChannelNumber, Pwm_EdgeNotificationT
  */
 void Pwm_GetVersionInfo(Std_VersionInfoType* versioninfo);
 
-extern const Pwm_ChannelConfigType PwmChannelsConfig[];
-#define PWM_NUM_CHANNELS  (sizeof(PwmChannelsConfig)/sizeof(PwmChannelsConfig[0]))
 #endif /* PWM_H */

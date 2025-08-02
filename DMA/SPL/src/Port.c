@@ -72,6 +72,17 @@ void Port_ApplyPinConfig(const Port_PinConfigType* pinCfg) {
             break;
 
         case PORT_PIN_MODE_PWM:
+            /* Enable clock for the PORT */
+            switch (pinCfg->PortNum) {
+                case PORT_ID_A: RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE); break;
+                case PORT_ID_B: RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE); break;
+                case PORT_ID_C: RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE); break;
+                case PORT_ID_D: RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE); break;
+                default: break;
+            }
+            GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_PP;
+            break;
+
             GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_PP;
             break;
 

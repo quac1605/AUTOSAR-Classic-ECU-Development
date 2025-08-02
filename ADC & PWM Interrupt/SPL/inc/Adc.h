@@ -16,6 +16,9 @@
 #include "stm32f10x_dma.h"
 #include "Port.h"
 #include "misc.h"
+
+
+
 /** Logical identifier for an ADC channel */
 typedef uint8 Adc_ChannelType;
 
@@ -65,16 +68,6 @@ typedef enum {
 
 /** ADC group priority */
 typedef uint8 Adc_GroupPriorityType;
-
-/** ADC channels in group */
-typedef struct{
-    Adc_GroupType GroupId; /**< Logical identifier for the ADC group */
-    Adc_ChannelType Channels[16]; /**< Array of channels in the group, max 16 channels */
-    Adc_GroupPriorityType Priority; /**< Priority of the group */
-    uint8 numChannels; /**< Number of channels in the group */
-    Adc_StatusType Status; /**< Current status of the group */
-    Adc_ValueGroupType *Result; /**< Group transmit result */
-} Adc_GroupDefType;
 
 /** Number of group conversions in streaming access mode */
 typedef uint8 Adc_StreamNumSampleType;
@@ -164,9 +157,23 @@ typedef enum {
     ADC_1 = 0x00, /**< ADC Instance 1 */
     ADC_2 = 0x01 /**< ADC Instance 2 */
 } Adc_InstanceType;
+ 
+/** ADC channels in group */
+typedef struct{
+    Adc_GroupType GroupId; /**< Logical identifier for the ADC group */
+    Adc_InstanceType AdcInstance; /**< ADC instance for the group */
+    Adc_ChannelType Channels[16]; /**< Array of channels in the group, max 16 channels */
+    Adc_GroupPriorityType Priority; /**< Priority of the group */
+    uint8 numChannels; /**< Number of channels in the group */
+    Adc_StatusType Status; /**< Current status of the group */
+    Adc_ValueGroupType *Result; /**< Group transmit result */
+    uint8 Adc_StreamEnableType; /** Enable DMA streaming **/
+    uint8 Adc_StreamBufferSize; /** Size of the DMA buffer for streaming **/
+    Adc_StreamBufferModeType Adc_StreamBufferMode; /** Buffer handling mode **/
 
-typedef void (*Adc_NotificationCbType)(void);
+} Adc_GroupDefType;
 
+extern Adc_GroupDefType Adc_Groups[MAX_ADC_GROUPS];
 
 /**
  * @brief Configuration structure for a single ADC group
@@ -174,10 +181,11 @@ typedef void (*Adc_NotificationCbType)(void);
 typedef struct {
     Adc_GroupConvModeType ConvMode; /**< Conversion mode of the group */
     Adc_TriggerSourceType TriggerSource; /**< Trigger source for the group */
-    Adc_NotificationType NotificatioEnable; /**< Notification enable flag when transmit process finish */
+    Adc_NotificationType NotificationEnable; /**< Notification enable flag when transmit process finish */
     uint8 numChannels; /**< Number of channels in the group */
     Adc_InstanceType Instance; /**< ADC instance for the group */
     Adc_ResultAlignmentType ResultAlignment; /**< Result alignment for the group */
+    void (*Adc_NotificationCbType)(void); /**< Callback function for notifications */
     /**
      * @typedef Adc_ChannelConfigType
      * @brief Configuration structure for each ADC channel
@@ -189,9 +197,7 @@ typedef struct {
     } Channel[16]; // Maximum 16 channels per group
 } Adc_ConfigType;
 
-/* =============================== */
-/*           API Prototypes        */
-/* =============================== */
+extern Adc_ConfigType Adc_Configs[2];
 
 /**
  * @brief Initializes the ADC driver with the given configuration

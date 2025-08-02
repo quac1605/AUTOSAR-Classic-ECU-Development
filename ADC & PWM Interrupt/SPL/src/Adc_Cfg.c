@@ -1,26 +1,29 @@
 #include "Adc_Cfg.h"
 #include "stm32f10x_adc.h"
 
-void MyAdcGroup0_Notification(void)
-{
-    // Xử lý kết quả, ví dụ: toggle LED
-}
+
 
 void ADC1_2_IRQHandler(void)
 {
-    Adc_IsrHandler(ADC1);
-    // Nếu có ADC2: Adc_IsrHandler(ADC2);
+    for (uint8 group = 0;group < MAX_ADC_GROUPS; group++ ){
+        Adc_GroupDefType* groupDef = &Adc_Groups[group];
+        Adc_ConfigType* config = &Adc_Configs[groupDef->AdcInstance];
+        if (config->NotificationEnable == ADC_NOTIFICATION_ON) {
+            if (groupDef->AdcInstance == ADC_1 && ADC_GetITStatus(ADC1, ADC_IT_EOC)) {
+                ADC_ClearITPendingBit(ADC1, ADC_IT_EOC);
+                if (config->Adc_NotificationCbType) {
+                    config->Adc_NotificationCbType();
+                }
+            }
+            else if (groupDef->AdcInstance == ADC_2 && ADC_GetITStatus(ADC2, ADC_IT_EOC)) {
+                ADC_ClearITPendingBit(ADC2, ADC_IT_EOC);
+                if (config->Adc_NotificationCbType) {
+                    config->Adc_NotificationCbType();
+                }
+            }
+        }
+    }
 }
 
-const Adc_GroupConfigType AdcGroupConfig[] = {
-    {   
-        .ADCx = ADC1, 
-        .groupId = 0, 
-        .channelCount = 2, 
-        .NotificationCb = MyAdcGroup0_Notification },
-    { 
-        .ADCx = ADC1, 
-        .groupId = 1, 
-        .channelCount = 1, 
-        .NotificationCb = NULL }
-};
+
+

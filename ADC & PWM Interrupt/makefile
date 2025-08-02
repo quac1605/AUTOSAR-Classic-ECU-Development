@@ -6,6 +6,7 @@ TARGET = blinkled
 # Trình biên dịch và các flags
 CC      = arm-none-eabi-gcc
 CFLAGS  = -mcpu=cortex-m3 -mthumb -O0 -g -Wall -ffreestanding -nostdlib \
+		   -I. \
 		   -ISPL/inc \
 		   -ICore \
 		   -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER

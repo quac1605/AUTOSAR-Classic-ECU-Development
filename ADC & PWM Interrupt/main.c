@@ -6,10 +6,18 @@
 #include "system_stm32f10x.h"
 #include "Dio.h"
 #include "Port.h"
+#include "Adc.h"
+#include "Adc_Cfg.h"
 #include "Pwm.h"
+#include "Pwm_Cfg.h"
 #include "Std_Types.h"
 
+Adc_ValueGroupType myGroup0Buffer[2];  // For 2 channels
 
+void MyAdcGroup0_Notification(void)
+{
+     Adc_ReadGroup(0, &myGroup0Buffer[0]);
+}
 // Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
 // 	{
 // 	.PinNum = 0,				
@@ -40,18 +48,37 @@ Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
 
 };
 
-Adc_ConfigType Adc_Config = {
+Adc_ConfigType Adc_Configs[2] = {
+	{
 	.ConvMode = ADC_CONV_MODE_CONTINUOUS,
 	.TriggerSource = ADC_TRIGG_SRC_SW,
-	.NotificatioEnable = ADC_NOTIFICATION_OFF,
+	.NotificationEnable = ADC_NOTIFICATION_ON,
 	.numChannels = 1,
 	.Instance = ADC_1, // Using ADC1
 	.ResultAlignment = ADC_ALIGN_RIGHT,
+	.Adc_NotificationCbType = MyAdcGroup0_Notification, // Callback function for notifications
 	.Channel = {{ 	.ChannelId = 0, 
 					.SamplingTime = ADC_SampleTime_1Cycles5, // Sampling time of 1.5 cycles
 					.Rank = 1 
 				} // Channel 0, Sampling time 1, Rank 1
 	}
+	}
+};
+
+// Define the group configuration array
+Adc_GroupDefType Adc_Groups[] = {
+    {
+        .GroupId = 0,
+		.AdcInstance = ADC_1, 		// Using ADC1
+        .Channels = {0},         	// Use channel 0
+        .Priority = 0,           	// Low priority
+        .numChannels = 1,
+        .Status = ADC_IDLE,
+        .Result = myGroup0Buffer, // Pointer to the result buffer
+		.Adc_StreamEnableType = 1, // Enable DMA streaming
+		.Adc_StreamBufferSize = 1,  // Size of the DMA buffer
+		.Adc_StreamBufferMode = ADC_STREAM_BUFFER_CIRCULAR // Circular buffer mode
+    }
 };
 
 // Pwm_ChannelConfigType Pwm_Channels = {
@@ -65,18 +92,6 @@ Adc_ConfigType Adc_Config = {
 // 	.Notification = NULL // No notification callback
 // 	}
 // };
-
-// Callback cho group 0
-void MyAdcGroup0_Notification(void)
-{
-    // Đọc giá trị trong buffer, ví dụ: toggle LED
-    GPIOC->ODR ^= GPIO_Pin_13;
-}
-
-void Pwm_Channel0_Notification(void)
-{
-    GPIOC->ODR ^= GPIO_Pin_13; // Toggles LED
-}
 
 int main(){
 
@@ -94,13 +109,10 @@ int main(){
 	// };
 	// Pwm_Init(&PwmConfig);
 	
-	Adc_Init(&Adc_Config);
-	// 2. Setup buffer cho group 0
-    Adc_SetupResultBuffer(0, myGroup0Buffer);
-    // 3. Enable notification và start conversion
+	Adc_Init(&Adc_Configs[0]);
+	Adc_StartGroupConversion(0);
     Adc_EnableGroupNotification(0);
-    Adc_StartGroupConversion(0);
-
+    
 
 	// Pwm_Init(&PwmDriverConfig);
     // // Enable both edges for channel 0

@@ -9,7 +9,9 @@
         "stm32f10x_rcc.h": "c",
         "std_types.h": "c",
         "stm32f10x_gpio.h": "c",
-        "pwm.h": "c"
+        "pwm.h": "c",
+        "pwm_cfg.h": "c",
+        "stm32f10x_adc.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

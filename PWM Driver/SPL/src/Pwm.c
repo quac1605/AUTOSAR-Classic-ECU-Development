@@ -8,7 +8,9 @@
 #include "stm32f10x.h"
 #include <stddef.h>
 
-Pwm_ConfigType* Pwm_CurrentConfigPtr; // Global configuration structure pointer
+
+
+const Pwm_ConfigType* Pwm_CurrentConfigPtr; // Global configuration structure pointer
 
 /**
  * @brief Returns the TIM peripheral associated with a given PWM channel.
@@ -21,7 +23,7 @@ TIM_TypeDef* GetChannelTIM(Pwm_ChannelType ch) {
         case 1: return TIM2;  // 4–7
         case 2: return TIM3;  // 8–11
         case 3: return TIM4;  // 12–15
-        default: return NULL;
+        default: return NULL_PTR;
     }
 }
 
@@ -30,68 +32,58 @@ TIM_TypeDef* GetChannelTIM(Pwm_ChannelType ch) {
  * @param ConfigPtr Pointer to the configuration structure.
  */
 void Pwm_Init(const Pwm_ConfigType* ConfigPtr) {
-    if (ConfigPtr == NULL || ConfigPtr->Channels == NULL) {
-        return; // Invalid configuration
-    }
+    if (!ConfigPtr || !ConfigPtr->Channels) return;
+    Pwm_CurrentConfigPtr = ConfigPtr;
 
-    Pwm_CurrentConfigPtr = ConfigPtr; // Store the configuration pointer
     for (uint8 i = 0; i < ConfigPtr->numChannels; i++) {
-        const Pwm_ChannelConfigType* channelConfig = &ConfigPtr->Channels[i];
-        TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
-        
-        if (tim == NULL) {
-            continue; // Invalid channel
+        const Pwm_ChannelConfigType* cfg = &ConfigPtr->Channels[i];
+        TIM_TypeDef* tim = GetChannelTIM(cfg->Channel);
+        if (!tim) continue;
+
+        // 1) Enable timer clock
+        if      (tim == TIM1) RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
+        else if (tim == TIM2) RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+        else if (tim == TIM3) RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+        else if (tim == TIM4) RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+
+        // 2) Time-base: zero-init then set fields
+        TIM_TimeBaseInitTypeDef tb = {0};
+        tb.TIM_Prescaler     = 72 - 1;
+        tb.TIM_CounterMode   = TIM_CounterMode_Up;
+        tb.TIM_Period        = (uint16)(cfg->defaultPeriode - 1);
+        tb.TIM_ClockDivision = TIM_CKD_DIV1;
+        TIM_TimeBaseInit(tim, &tb);
+        TIM_ARRPreloadConfig(tim, ENABLE);
+
+        // 3) Output-compare: zero-init, then set to your compareValue
+        TIM_OCInitTypeDef oc = {0};
+        oc.TIM_OCMode        = TIM_OCMode_PWM1;
+        oc.TIM_OutputState   = TIM_OutputState_Enable;
+        oc.TIM_Pulse         = cfg->compareValue;               // use compareValue here!
+        oc.TIM_OCPolarity    = (cfg->polarity == PWM_HIGH)
+                                ? TIM_OCPolarity_High
+                                : TIM_OCPolarity_Low;
+
+        switch (cfg->Channel % 4) {
+            case 0: TIM_OC1Init(tim, &oc); TIM_OC1PreloadConfig(tim, TIM_OCPreload_Enable); break;
+            case 1: TIM_OC2Init(tim, &oc); TIM_OC2PreloadConfig(tim, TIM_OCPreload_Enable); break;
+            case 2: TIM_OC3Init(tim, &oc); TIM_OC3PreloadConfig(tim, TIM_OCPreload_Enable); break;
+            case 3: TIM_OC4Init(tim, &oc); TIM_OC4PreloadConfig(tim, TIM_OCPreload_Enable); break;
         }
 
-        // Initialize the TIM peripheral with the channel configuration
-        TIM_TimeBaseInitTypeDef TIM_InitStruct;
-        TIM_InitStruct.TIM_Prescaler = 8-1;
-        TIM_InitStruct.TIM_Period = channelConfig->defaultPeriode - 1;
-        TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
-        TIM_InitStruct.TIM_CounterMode = TIM_CounterMode_Up;
+        // 4) Force an update so ARR/CCR preload registers are loaded immediately
+        TIM_GenerateEvent(tim, TIM_EventSource_Update);
 
-        TIM_TimeBaseInit(tim, &TIM_InitStruct);
-        
-        // Set the PWM mode and output state
-        TIM_OCInitTypeDef TIM_OC;
-        TIM_OC.TIM_OCMode = TIM_OCMode_PWM1;
-        TIM_OC.TIM_OutputState = TIM_OutputState_Enable;
-        TIM_OC.TIM_Pulse = channelConfig->compareValue;
-        if (channelConfig->polarity == PWM_HIGH) {
-            TIM_OC.TIM_OCPolarity = TIM_OCPolarity_High;
-        } else {
-            TIM_OC.TIM_OCPolarity = TIM_OCPolarity_Low;
-        }
-
-        // Set the output compare mode for the specific channel
-        switch (channelConfig->Channel % 4) {
-            case 0: 
-                TIM_OC1Init(tim, &TIM_OC);
-                break;
-            case 1: 
-                TIM_OC2Init(tim, &TIM_OC);
-                break;
-            case 2: 
-                TIM_OC3Init(tim, &TIM_OC);
-                break;
-            case 3: 
-                TIM_OC4Init(tim, &TIM_OC);
-                break;
-            default:
-                break; // Invalid channel
-        }
-
-        // Enable the timer
+        // 5) Start timer
         TIM_Cmd(tim, ENABLE);
     }
-
 }
 
 /**
  * @brief De-initializes the PWM driver.
  */
 void Pwm_DeInit(void) {
-    if (Pwm_CurrentConfigPtr == NULL) {
+    if (Pwm_CurrentConfigPtr == NULL_PTR) {
         return; // No configuration to de-initialize
     }
 
@@ -126,7 +118,7 @@ void Pwm_DeInit(void) {
         }
     }
 
-    Pwm_CurrentConfigPtr = NULL; // Clear the configuration pointer
+    Pwm_CurrentConfigPtr = NULL_PTR; // Clear the configuration pointer
 }
 
 /**
@@ -134,35 +126,24 @@ void Pwm_DeInit(void) {
  * @param ChannelNumber The PWM channel to set the duty cycle for.
  * @param DutyCycle The duty cycle value to set (0-100%).
  */
-void Pwm_SetDutyCycle(Pwm_ChannelType ChannelNumber, uint16 DutyCycle) {
-    if (Pwm_CurrentConfigPtr == NULL || ChannelNumber >= Pwm_CurrentConfigPtr->numChannels) {
-        return; // Invalid configuration or channel
-    }
+void Pwm_SetDutyCycle(Pwm_ChannelType idx, uint16 DutyPercent) {
+    if (!Pwm_CurrentConfigPtr || idx >= Pwm_CurrentConfigPtr->numChannels) return;
+    if (DutyPercent > 100) DutyPercent = 100;
 
-    const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
-    TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
-    
-    if (tim == NULL) {
-        return; // Invalid channel
-    }
+    const Pwm_ChannelConfigType* cfg = &Pwm_CurrentConfigPtr->Channels[idx];
+    TIM_TypeDef* tim = GetChannelTIM(cfg->Channel);
+    if (!tim) return;
 
-    uint16 compareValue = (DutyCycle * channelConfig->defaultPeriode) >> 15;
-    
-    switch (channelConfig->Channel % 4) {
-        case 0: 
-            TIM_SetCompare1(tim, compareValue);
-            break;
-        case 1: 
-            TIM_SetCompare2(tim, compareValue);
-            break;
-        case 2: 
-            TIM_SetCompare3(tim, compareValue);
-            break;
-        case 3: 
-            TIM_SetCompare4(tim, compareValue);
-            break;
-        default:
-            break; // Invalid channel
+    // Map 0→MIN, 100→MAX
+    uint32_t pulse = SERVO_MIN_PULSE_US
+                   + ((uint32_t)(SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)
+                      * DutyPercent) / 100;
+
+    switch (cfg->Channel % 4) {
+        case 0: TIM_SetCompare1(tim, pulse); break;
+        case 1: TIM_SetCompare2(tim, pulse); break;
+        case 2: TIM_SetCompare3(tim, pulse); break;
+        case 3: TIM_SetCompare4(tim, pulse); break;
     }
 }
 
@@ -173,14 +154,14 @@ void Pwm_SetDutyCycle(Pwm_ChannelType ChannelNumber, uint16 DutyCycle) {
  * @param DutyCycle The duty cycle value to set (0-100%).
  */
 void Pwm_SetPeriodAndDuty(Pwm_ChannelType ChannelNumber, Pwm_PeriodType Period, uint16 DutyCycle) {
-    if (Pwm_CurrentConfigPtr == NULL || ChannelNumber >= Pwm_CurrentConfigPtr->numChannels || Pwm_CurrentConfigPtr->Channels[ChannelNumber].classType == PWM_FIXED_PERIOD) {
+    if (Pwm_CurrentConfigPtr == NULL_PTR || ChannelNumber >= Pwm_CurrentConfigPtr->numChannels || Pwm_CurrentConfigPtr->Channels[ChannelNumber].classType == PWM_FIXED_PERIOD) {
         return; // Invalid configuration or channel
     }
 
     const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
     TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
     
-    if (tim == NULL) {
+    if (tim == NULL_PTR) {
         return; // Invalid channel
     }
 
@@ -219,14 +200,14 @@ void Pwm_SetPeriodAndDuty(Pwm_ChannelType ChannelNumber, Pwm_PeriodType Period, 
  * @param ChannelNumber The PWM channel to start.
  */
 void Pwm_SetOutputToIdle(Pwm_ChannelType ChannelNumber) {
-    if (Pwm_CurrentConfigPtr == NULL || ChannelNumber >= Pwm_CurrentConfigPtr->numChannels) {
+    if (Pwm_CurrentConfigPtr == NULL_PTR || ChannelNumber >= Pwm_CurrentConfigPtr->numChannels) {
         return; // Invalid configuration or channel
     }
     const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
     TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
 
     
-    if (tim == NULL) {
+    if (tim == NULL_PTR) {
         return; // Invalid channel
     }
     Pwm_ChannelType channel = channelConfig->Channel;
@@ -351,13 +332,13 @@ Pwm_OutputStateType Pwm_GetOutputState(Pwm_ChannelType ChannelNumber) {
     uint16_t isOutputEnabled = 0;
     switch (channelConfig->Channel % 4) {
         case 0: 
-            isOutputEnabled = (tim.CCER & TIM_CCER_CC1E);
+            isOutputEnabled = (tim->CCER & TIM_CCER_CC1E);
         case 1: 
-            isOutputEnabled = (tim.CCER & TIM_CCER_CC2E);
+            isOutputEnabled = (tim->CCER & TIM_CCER_CC2E);
         case 2: 
-            isOutputEnabled = (tim.CCER & TIM_CCER_CC3E);
+            isOutputEnabled = (tim->CCER & TIM_CCER_CC3E);
         case 3: 
-            isOutputEnabled = (tim.CCER & TIM_CCER_CC4E);
+            isOutputEnabled = (tim->CCER & TIM_CCER_CC4E);
         default:
             break; // Invalid channel
     }
@@ -369,10 +350,9 @@ Pwm_OutputStateType Pwm_GetOutputState(Pwm_ChannelType ChannelNumber) {
  * @param ChannelNumber The PWM channel to disable notification for.
  */
 void Pwm_DisableNotification(Pwm_ChannelType ChannelNumber) {
-    (void)Nitification;
     const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
     TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
-    if (tim == NULL) {
+    if (tim == NULL_PTR) {
         return; // Invalid channel
     }
 
@@ -402,7 +382,7 @@ void Pwm_DisableNotification(Pwm_ChannelType ChannelNumber) {
 void Pwm_EnableNotification(Pwm_ChannelType ChannelNumber, Pwm_EdgeNotificationType Notification) {
     const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
     TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
-    if (tim == NULL) {
+    if (tim == NULL_PTR) {
         return; // Invalid channel
     }
 
@@ -428,7 +408,7 @@ void Pwm_EnableNotification(Pwm_ChannelType ChannelNumber, Pwm_EdgeNotificationT
  * @brief Service returns the version information of this module.
  */
 void Pwm_GetVersionInfo(Std_VersionInfoType* versioninfo) {
-    if (versioninfo == NULL) {
+    if (versioninfo == NULL_PTR) {
         return; // Invalid pointer
     }
 
@@ -438,7 +418,3 @@ void Pwm_GetVersionInfo(Std_VersionInfoType* versioninfo) {
     versioninfo->sw_minor_version = PWM_SW_MINOR_VERSION;
     versioninfo->sw_patch_version = PWM_SW_PATCH_VERSION;
 }
-
-
-
-Pwm_ChannelConfigType Pwm_Channels[MAX_PWM_CHANNELS] = { 0 };

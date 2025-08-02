@@ -18,6 +18,16 @@
 #include "Port.h"
 #include "Dio.h"
 
+#define PWM_VENDOR_ID         1234
+#define PWM_MODULE_ID         5678
+#define PWM_SW_MAJOR_VERSION  1
+#define PWM_SW_MINOR_VERSION  0
+#define PWM_SW_PATCH_VERSION  0
+
+// Servo pulse specs from the SG90 datasheet:
+#define SERVO_MIN_PULSE_US   600u    /**<  0° →  0.6 ms  */
+#define SERVO_MAX_PULSE_US  2400u    /**< 180° →  2.4 ms  */
+#define SERVO_CENTER_PULSE_US 1500u  /**<  90° →  1.5 ms  */
 /** Logical identifier for an PWM channel 0 -> 15 */
 typedef uint8 Pwm_ChannelType;
 

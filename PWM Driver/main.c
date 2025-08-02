@@ -2,59 +2,72 @@
 #include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
 #include "stm32f10x_tim.h"
-#include "stm32f10x_conf.h"
 #include "system_stm32f10x.h"
-#include "Dio.h"
 #include "Port.h"
 #include "Pwm.h"
-#include "Std_Types.h"
 
-
+/* Port (PA0) */
 Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
-	{
-	.PinNum = 0,				
-	.Mode = PORT_PIN_MODE_PWM, // PWM mode
-	.Direction = PORT_PIN_OUT, // Output direction
-	.speed = 50, 				// 50MHz
-	.DirectionChangeable = 0, 	// Direction cannot be changed at runtime
-	.Level = 0, 				// Initial level is low},
-	.Pull = PORT_PIN_PULL_UP,
-	.ModeChangeable = 0, 		// Mode cannot be changed at runtime
-	.PortNum = PORT_ID_A		// Port A, Pin 0
-	} 		
-
+    {
+      .PortNum           = PORT_ID_A,
+      .PinNum            = 0,
+      .Mode              = PORT_PIN_MODE_PWM,
+      .Direction         = PORT_PIN_OUT,
+      .speed             = 50,
+      .DirectionChangeable = 0,
+      .Level             = PORT_PIN_LEVEL_LOW,
+      .Pull              = PORT_PIN_PULL_NONE,
+      .ModeChangeable    = 0
+    }
+};
+const Port_ConfigType PortCfg = {
+    .PinConfigs = PortCfg_Pins,
+    .PinCount   = 1
 };
 
-Pwm_ChannelConfigType Pwm_Channels = {
-	{
-	.Channel = 5, // Channel 5
-	.classType = PWM_FIXED_PERIOD,
-	.defaultPeriode = 20000, // Default period in ms
-	.compareValue = 500, // Default duty cycle 50%
-	.polarity = PWM_HIGH,
-	.idleState = PWM_High,
-	.Notification = NULL // No notification callback
-	}
+/* PWM channel 0 → TIM2_CH1 (PA0) */
+Pwm_ChannelConfigType Pwm_Channels[] = {
+    {
+      .Channel        = 4,                /* 4→TIM2_CH1 */
+      .classType      = PWM_FIXED_PERIOD,
+      .defaultPeriode = 20000,            /* Counts @1 MHz →20 ms */
+      .compareValue   = SERVO_CENTER_PULSE_US,
+      .polarity       = PWM_HIGH,
+      .idleState      = PWM_HIGH,
+      .Notification   = NULL
+    }
+};
+const Pwm_ConfigType PwmCfg = {
+    .Channels    = Pwm_Channels,
+    .numChannels = 1
 };
 
-int main(){
+static volatile uint32_t msTicks;
+void SysTick_Handler(void) { msTicks++; }
+static void Delay_ms(uint32_t ms) {
+    uint32_t start = msTicks;
+    while ((msTicks - start) < ms) { }
+}
 
-	// Initialize the pin configuration
-	Port_ConfigType PortCfg = {
-	.PinConfigs = PortCfg_Pins, // Pointer to the array of pin configurations
-	.PinCount = 1 				// Number of configured pins
-	};
-	Port_Init(&PortCfg); 
-	
-	// Initialize the PWM driver with the configuration
-	Pwm_ConfigType PwmConfig = {
-	.Channels = Pwm_Channels, 	// Pointer to the PWM channel configurations
-	.numChannels = 1 			// Number of configured PWM channels
-	};
-	Pwm_Init(&PwmConfig);
-	
-	
-	while(1){
-		
+int main(void) {
+    SystemInit();
+    SystemCoreClockUpdate();
+    SysTick_Config(SystemCoreClock / 1000);
+
+    /* bring up port & PWM driver */
+    Port_Init(&PortCfg);
+    Pwm_Init(&PwmCfg);
+
+    /* let servo center */
+    Delay_ms(500);
+
+    while (1) {
+        /* extreme “0” */
+        Pwm_SetDutyCycle(0, 0);
+        Delay_ms(500);
+
+        /* extreme “100” */
+        Pwm_SetDutyCycle(0, 100);
+        Delay_ms(500);
     }
 }

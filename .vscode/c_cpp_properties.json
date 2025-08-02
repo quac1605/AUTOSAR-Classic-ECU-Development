@@ -4,7 +4,7 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/ADC Driver/SPL/inc"
+                "${workspaceFolder}/ADC & PWM Interrupt/SPL/inc"
             ],
             "defines": [
                 "_DEBUG",

@@ -11,7 +11,7 @@
 #include "stm32f10x_adc.h"
 #include "stm32f10x_rcc.h"
 
-Adc_GroupDefType Adc_Groups[MAX_ADC_GROUPS] = { 0 };
+extern Adc_GroupDefType Adc_Groups[];
 
 ADC_InitTypeDef ADC_InitStruct;
 void Port_ConfigAdcPin(uint8 portNum, uint8 pinNum)
@@ -36,7 +36,7 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
     if (ConfigPtr == NULL_PTR) return;
     // Initialize ADC peripheral based on ConfigPtr
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);  // DMA1 for ADC1/ADC2
-
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_ADC2, ENABLE); // Enable ADC clocks
     // Select ADC instance
 
     ADC_TypeDef* adcInstance = NULL;
@@ -105,8 +105,6 @@ void Adc_DeInit(void)
     ADC_DeInit(ADC2);
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, DISABLE);  // Disable DMA clock
 }
-        
-extern Adc_GroupDefType Adc_Groups[];
 
 Std_ReturnType Adc_SetupResultBuffer(Adc_GroupType Group, Adc_ValueGroupType* DataBufferPtr)
 {
@@ -135,9 +133,8 @@ void Adc_StartGroupConversion(Adc_GroupType Group){
         return; // Invalid group
     }
 
-    // Get the ADC instance for the group       
-    Adc_ChannelType channel = Adc_Groups[Group].Channels[0];
-    ADC_TypeDef* adcInstance = (channel <= 15) ? ADC1 : ADC2;
+    // Get the ADC instance for the group
+    ADC_TypeDef* adcInstance = (Adc_Groups[Group].AdcInstance == ADC_1) ? ADC1 : ADC2;
 
     // Start conversion
     ADC_SoftwareStartConvCmd(adcInstance, ENABLE);
@@ -153,8 +150,7 @@ void Adc_StopGroupConversion(Adc_GroupType Group){
     }
 
     // Get the ADC instance for the group
-    Adc_ChannelType channel = Adc_Groups[Group].Channels[0];
-    ADC_TypeDef* adcInstance = (channel <= 15) ? ADC1 : ADC2;
+    ADC_TypeDef* adcInstance = (Adc_Groups[Group].AdcInstance == ADC_1) ? ADC1 : ADC2;
 
     // Stop conversion
     ADC_SoftwareStartConvCmd(adcInstance, DISABLE);
@@ -173,12 +169,11 @@ void Adc_ReadGroup(Adc_GroupType Group, Adc_ValueGroupType* DataBufferPtr)
     Adc_GroupDefType* group = &Adc_Groups[Group];
 
     // Get first channel to identify ADC instance
-    Adc_ChannelType channel = group->Channels[0];
     ADC_TypeDef* adcInstance = NULL_PTR;
 
-    if (channel <= 15) {
+    if (group->AdcInstance == ADC_1) {
         adcInstance = ADC1;
-    } else if (channel <= 31) {
+    } else if (group->AdcInstance == ADC_2) {
         adcInstance = ADC2;
     } else {
         return; // Invalid channel
@@ -207,13 +202,12 @@ void Adc_EnableHardwareTrigger(Adc_GroupType Group)
     }
 
     Adc_GroupDefType* group = &Adc_Groups[Group];
-    Adc_ChannelType channel = group->Channels[0];
     ADC_TypeDef* adc = NULL;
 
     // Determine ADC instance from channel ID
-    if (channel <= 15) {
+    if (group->AdcInstance == ADC_1) {
         adc = ADC1;
-    } else if (channel <= 31) {
+    } else if (group->AdcInstance == ADC_2) {
         adc = ADC2;
     } else {
         return; // Invalid channel ID
@@ -241,13 +235,12 @@ void Adc_DisableHardwareTrigger(Adc_GroupType Group)
     }
 
     Adc_GroupDefType* group = &Adc_Groups[Group];
-    Adc_ChannelType channel = group->Channels[0];
     ADC_TypeDef* adc = NULL;
 
     // Determine which ADC peripheral to use
-    if (channel <= 15) {
+    if (group->AdcInstance == ADC_1) {
         adc = ADC1;
-    } else if (channel <= 31) {
+    } else if (group->AdcInstance == ADC_2) {
         adc = ADC2;
     } else {
         return;  // Invalid channel
@@ -279,31 +272,32 @@ void Adc_GetVersionInfo (Std_VersionInfoType* VersionInfo)
 
 void Adc_EnableGroupNotification(Adc_GroupType Group){
 
-    const Adc_GroupConfigType* cfg = &AdcGroupConfig[Group];
-    ADC_ITConfig(cfg->ADCx, ADC_IT_EOC, ENABLE);
-    NVIC_EnableIRQ(ADC1_2_IRQn);
+    Adc_ConfigType* cfg = &Adc_Configs[Adc_Groups[Group].AdcInstance];
+    cfg->NotificationEnable = ADC_NOTIFICATION_ON;
+
+    // Enable the ADC interrupt for the group
+    if (cfg->Instance == ADC_1) {
+        ADC_ITConfig(ADC1, ADC_IT_EOC, ENABLE);
+        NVIC_EnableIRQ(ADC1_2_IRQn);
+    } else if (cfg->Instance == ADC_2) {
+        ADC_ITConfig(ADC2, ADC_IT_EOC, ENABLE);
+        NVIC_EnableIRQ(ADC1_2_IRQn);
+    }
 }
 
 void Adc_DisableGroupNotification(Adc_GroupType Group){
+    Adc_ConfigType* cfg = &Adc_Configs[Adc_Groups[Group].AdcInstance];
+    cfg->NotificationEnable = ADC_NOTIFICATION_OFF;
 
-    Adc_Hw_DisableNotification(Group);
-}
-
-void Adc_IsrHandler(ADC_TypeDef* ADCx)
-{
-    for (uint8_t i = 0; i < ADC_NUM_GROUPS; i++) {
-        const Adc_GroupConfigType* cfg = &AdcGroupConfig[i];
-        if (cfg->ADCx != ADCx) continue;
-        if (ADC_GetITStatus(ADCx, ADC_IT_EOC)) {
-            uint16_t val = ADC_GetConversionValue(ADCx);
-            // Ghi val vào buffer (single/streaming, tuỳ thiết kế)
-            ADC_ClearITPendingBit(ADCx, ADC_IT_EOC);
-            if (cfg->NotificationCb) {
-                cfg->NotificationCb(); đây chính là con trỏ hàm được đăng ký ở trên
-            }
-        }
+    // Disable the ADC interrupt for the group
+    if (cfg->Instance == ADC_1) {
+        NVIC_DisableIRQ(ADC1_2_IRQn);
+    } else if (cfg->Instance == ADC_2) {
+        NVIC_DisableIRQ(ADC1_2_IRQn);
     }
 }
+
+
 
 
 

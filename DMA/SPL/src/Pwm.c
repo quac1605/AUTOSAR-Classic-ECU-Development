@@ -23,7 +23,7 @@ void Pwm_Init(const Pwm_ConfigType* ConfigPtr) {
     Pwm_CurrentConfigPtr = ConfigPtr; // Store the configuration pointer
     for (uint8 i = 0; i < ConfigPtr->numChannels; i++) {
         const Pwm_ChannelConfigType* channelConfig = &ConfigPtr->Channels[i];
-        TIM_TypeDef* tim = ConfigPtr->Channels[i].TIMx; // Get the TIM instance for the channel
+        TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
         
         if (tim == NULL) {
             continue; // Invalid channel
@@ -31,12 +31,13 @@ void Pwm_Init(const Pwm_ConfigType* ConfigPtr) {
 
         // Initialize the TIM peripheral with the channel configuration
         TIM_TimeBaseInitTypeDef TIM_InitStruct;
-        TIM_InitStruct.TIM_Prescaler = 8-1;
+        TIM_InitStruct.TIM_Prescaler = 72-1;
         TIM_InitStruct.TIM_Period = channelConfig->defaultPeriode - 1;
         TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
         TIM_InitStruct.TIM_CounterMode = TIM_CounterMode_Up;
 
         TIM_TimeBaseInit(tim, &TIM_InitStruct);
+        TIM_ARRPreloadConfig(tim, ENABLE);
         
         // Set the PWM mode and output state
         TIM_OCInitTypeDef TIM_OC;
@@ -53,15 +54,19 @@ void Pwm_Init(const Pwm_ConfigType* ConfigPtr) {
         switch (channelConfig->Channel % 4) {
             case 0: 
                 TIM_OC1Init(tim, &TIM_OC);
+                TIM_OC1PreloadConfig(tim, TIM_OCPreload_Enable);
                 break;
             case 1: 
                 TIM_OC2Init(tim, &TIM_OC);
+                TIM_OC2PreloadConfig(tim, TIM_OCPreload_Enable);
                 break;
             case 2: 
                 TIM_OC3Init(tim, &TIM_OC);
+                TIM_OC3PreloadConfig(tim, TIM_OCPreload_Enable);
                 break;
             case 3: 
                 TIM_OC4Init(tim, &TIM_OC);
+                TIM_OC4PreloadConfig(tim, TIM_OCPreload_Enable);
                 break;
             default:
                 break; // Invalid channel
