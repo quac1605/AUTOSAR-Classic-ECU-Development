@@ -4,7 +4,6 @@
 #include "stm32f10x_tim.h"
 #include "stm32f10x_conf.h"
 #include "system_stm32f10x.h"
-#include "Dio.h"
 #include "Port.h"
 #include "Adc.h"
 #include "Adc_Cfg.h"
@@ -12,41 +11,74 @@
 #include "Pwm_Cfg.h"
 #include "Std_Types.h"
 
+static volatile uint32_t msTicks;
+void SysTick_Handler(void) { msTicks++; }
+static void Delay_ms(uint32_t ms) {
+    uint32_t start = msTicks;
+    while ((msTicks - start) < ms) { }
+}
+
 Adc_ValueGroupType myGroup0Buffer[2];  // For 2 channels
 
 void MyAdcGroup0_Notification(void)
 {
-     Adc_ReadGroup(0, &myGroup0Buffer[0]);
+    Adc_ReadGroup(0, &myGroup0Buffer[0]);
 }
-// Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
-// 	{
-// 	.PinNum = 0,				
-// 	.Mode = PORT_PIN_MODE_PWM, // PWM mode
-// 	.Direction = PORT_PIN_OUT, // Output direction
-// 	.speed = 50, 				// 50MHz
-// 	.DirectionChangeable = 0, 	// Direction cannot be changed at runtime
-// 	.Level = 0, 				// Initial level is low},
-// 	.Pull = PORT_PIN_PULL_UP,
-// 	.ModeChangeable = 0, 		// Mode cannot be changed at runtime
-// 	.PortNum = PORT_ID_A		// Port A, Pin 0
-// 	} 		
 
-// };
+void Pwm_Channel0_Notification(void)
+{
+	if (Dio_ReadChannel(DIO_CHANNEL_C13) == STD_HIGH) {
+		Dio_WriteChannel(DIO_CHANNEL_C13, STD_LOW);
+	} else {
+		Dio_WriteChannel(DIO_CHANNEL_C13, STD_HIGH);
+	}
+}
 
+/* Port (PA0) */
 Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
+    {
+      .PortNum           = PORT_ID_A,
+      .PinNum            = 0,
+      .Mode              = PORT_PIN_MODE_PWM,
+      .Direction         = PORT_PIN_OUT,
+      .speed             = 50,
+      .DirectionChangeable = 0,
+      .Level             = PORT_PIN_LEVEL_LOW,
+      .Pull              = PORT_PIN_PULL_NONE,
+      .ModeChangeable    = 0
+    },
 	{
-	.PinNum = 0,				// Pin 45 corresponds to PC13
-	.Mode = PORT_PIN_MODE_ADC,
-	.Direction = PORT_PIN_IN,
+	.PinNum = 13,				// Pin 45 corresponds to PC13
+	.Mode = PORT_PIN_MODE_DIO,
+	.Direction = PORT_PIN_OUT,
 	.speed = 50, 				// 50MHz
 	.DirectionChangeable = 0, 	// Direction cannot be changed at runtime
 	.Level = 0, 				// Initial level is low},
 	.Pull = PORT_PIN_PULL_UP,
 	.ModeChangeable = 0, 		// Mode cannot be changed at runtime
-	.PortNum = PORT_ID_A		// Port C, Pin 13
-	} 		
-
+	.PortNum = PORT_ID_C		// Port C, Pin 13
+	}
 };
+
+const Port_ConfigType PortCfg = {
+	.PinConfigs = PortCfg_Pins,
+	.PinCount   = sizeof(PortCfg_Pins)/sizeof(*PortCfg_Pins)
+};
+
+// Port_PinConfigType PortCfg_Pins[PIN_COUNT] = {
+// 	{
+// 	.PinNum = 0,				// Pin 45 corresponds to PC13
+// 	.Mode = PORT_PIN_MODE_ADC,
+// 	.Direction = PORT_PIN_IN,
+// 	.speed = 50, 				// 50MHz
+// 	.DirectionChangeable = 0, 	// Direction cannot be changed at runtime
+// 	.Level = 0, 				// Initial level is low},
+// 	.Pull = PORT_PIN_PULL_UP,
+// 	.ModeChangeable = 0, 		// Mode cannot be changed at runtime
+// 	.PortNum = PORT_ID_A		// Port C, Pin 13
+// 	} 		
+
+// };
 
 Adc_ConfigType Adc_Configs[2] = {
 	{
@@ -81,44 +113,53 @@ Adc_GroupDefType Adc_Groups[] = {
     }
 };
 
-// Pwm_ChannelConfigType Pwm_Channels = {
-// 	{
-// 	.Channel = 5, // Channel 5
-// 	.classType = PWM_FIXED_PERIOD,
-// 	.defaultPeriode = 20000, // Default period in ms
-// 	.compareValue = 500, // Default duty cycle 50%
-// 	.polarity = PWM_HIGH,
-// 	.idleState = PWM_High,
-// 	.Notification = NULL // No notification callback
-// 	}
-// };
+Pwm_ChannelConfigType Pwm_Channels[] = {
+	{
+	.Channel = 4, // Channel 4
+	.classType = PWM_FIXED_PERIOD,
+	.defaultPeriode = 20000, // Default period in ms
+	.compareValue = SERVO_CENTER_PULSE_US, // Default duty cycle 50%
+	.polarity = PWM_HIGH,
+	.idleState = PWM_HIGH,
+	.NotificationEnable = PWM_NOTIFICATION_ON, // Enable notification
+	.NotificationCb = Pwm_Channel0_Notification // Notification callback
+	}
+};
+
+const Pwm_ConfigType PwmConfig = {
+	.Channels = Pwm_Channels, // Pointer to the PWM channel configurations
+	.numChannels = 1 // Number of configured PWM channels
+};
+
 
 int main(){
 
+	SystemInit();
+    SystemCoreClockUpdate();
+    SysTick_Config(SystemCoreClock / 1000);
+
 	// Initialize the pin configuration
-	Port_ConfigType PortCfg = {
-	.PinConfigs = PortCfg_Pins, // Pointer to the array of pin configurations
-	.PinCount = 1 				// Number of configured pins
-	};
-	Port_Init(&PortCfg); 
+	Port_Init(&PortCfg);
 	
-	// // Initialize the PWM driver with the configuration
-	// Pwm_ConfigType PwmConfig = {
-	// .Channels = Pwm_Channels, 	// Pointer to the PWM channel configurations
-	// .numChannels = 1 			// Number of configured PWM channels
-	// };
-	// Pwm_Init(&PwmConfig);
-	
-	Adc_Init(&Adc_Configs[0]);
-	Adc_StartGroupConversion(0);
-    Adc_EnableGroupNotification(0);
+	// Adc_Init(&Adc_Configs[0]);
+	// Adc_StartGroupConversion(0);
+    // Adc_EnableGroupNotification(0);
     
 
-	// Pwm_Init(&PwmDriverConfig);
-    // // Enable both edges for channel 0
-    // Pwm_EnableNotification(0, PWM_BOTH_EDGES);
+	Pwm_Init(&PwmConfig);
+    // Enable both edges for channel 0
+    Pwm_EnableNotification(0, PWM_BOTH_EDGES);
 
-	while(1){
-		
+	/* let servo center */
+    Delay_ms(500);
+
+    while (1) {
+        /* extreme “0” */
+        Pwm_SetDutyCycle(0, 0);
+        Delay_ms(500);
+
+        /* extreme “100” */
+        Pwm_SetDutyCycle(0, 100);
+        Delay_ms(500);
     }
 }

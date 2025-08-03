@@ -14,22 +14,6 @@
 extern Adc_GroupDefType Adc_Groups[];
 
 ADC_InitTypeDef ADC_InitStruct;
-void Port_ConfigAdcPin(uint8 portNum, uint8 pinNum)
-{
-    Port_PinConfigType adcPinCfg;
-
-    adcPinCfg.PortNum = portNum;
-    adcPinCfg.PinNum = pinNum;
-    adcPinCfg.Mode = PORT_PIN_MODE_ADC;
-    adcPinCfg.Direction = PORT_PIN_IN;
-    adcPinCfg.speed = 2;  // Speed doesn't matter for analog, but must be set
-    adcPinCfg.Pull = PORT_PIN_PULL_NONE;
-    adcPinCfg.Level = PORT_PIN_LEVEL_LOW;
-    adcPinCfg.DirectionChangeable = 0;
-    adcPinCfg.ModeChangeable = 0;
-
-    Port_ApplyPinConfig(&adcPinCfg);
-}
 
 void Adc_Init(const Adc_ConfigType* ConfigPtr)
 {
@@ -46,20 +30,6 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
         adcInstance = ADC2;
     } else {
         return; // Invalid ADC instance
-    }
-
-    // Configure all channel GPIOs 
-    for (uint8 i = 0; i < ConfigPtr->numChannels; i++) {
-        uint8 channel = ConfigPtr->Channel[i].ChannelId;   
-        uint8 portNum = (channel <= 7) ? PORT_ID_A :
-                        (channel <= 9) ? PORT_ID_B :
-                        (channel <= 15) ? PORT_ID_C : 0xFF;  
-        uint8 pinNum = (channel <= 7) ? channel :
-                       (channel <= 9) ? (channel - 8) :
-                       (channel <= 15) ? (channel - 10) : 0xFF;  
-        if (portNum != 0xFF && pinNum != 0xFF) {
-            Port_ConfigAdcPin(portNum, pinNum);
-        }
     }
     // Initialize ADC peripheral
     ADC_InitStruct.ADC_Mode = ADC_Mode_Independent; // Independent mode for ADC1/ADC2

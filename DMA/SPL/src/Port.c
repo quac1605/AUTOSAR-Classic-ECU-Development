@@ -83,9 +83,6 @@ void Port_ApplyPinConfig(const Port_PinConfigType* pinCfg) {
             GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_PP;
             break;
 
-            GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF_PP;
-            break;
-
         case PORT_PIN_MODE_SPI:
             GPIO_InitStruct.GPIO_Mode = (pinCfg->Direction == PORT_PIN_OUT) ? GPIO_Mode_AF_PP : GPIO_Mode_IN_FLOATING;
             break;

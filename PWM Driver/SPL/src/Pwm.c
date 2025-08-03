@@ -9,7 +9,6 @@
 #include <stddef.h>
 
 
-
 const Pwm_ConfigType* Pwm_CurrentConfigPtr; // Global configuration structure pointer
 
 /**

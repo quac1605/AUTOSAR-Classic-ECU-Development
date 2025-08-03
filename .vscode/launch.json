@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "executable": "${workspaceFolder}/ADC & PWM Interrupt/blinkled.elf",
+            "executable": "${workspaceFolder}/DMA/blinkled.elf",
             "name": "Debug",
             "request": "launch",
             "type": "cortex-debug",

@@ -4,41 +4,28 @@
  */
 
 #include "Adc.h"
+#include "Adc_Cfg.h"
 #include "Port.h"
 #include "stm32f10x.h"
 #include <stddef.h>
-#include "Adc_Cfg.h"
 #include "stm32f10x_adc.h"
 #include "stm32f10x_rcc.h"
 
-Adc_GroupDefType Adc_Groups[MAX_ADC_GROUPS] = { 0 };
+extern Adc_ValueGroupType* Adc_DmaBuffer[ADC_NUM_GROUPS_DMA];
+
+extern Adc_GroupDefType Adc_Groups[];
 
 ADC_InitTypeDef ADC_InitStruct;
-void Port_ConfigAdcPin(uint8 portNum, uint8 pinNum)
-{
-    Port_PinConfigType adcPinCfg;
-
-    adcPinCfg.PortNum = portNum;
-    adcPinCfg.PinNum = pinNum;
-    adcPinCfg.Mode = PORT_PIN_MODE_ADC;
-    adcPinCfg.Direction = PORT_PIN_IN;
-    adcPinCfg.speed = 2;  // Speed doesn't matter for analog, but must be set
-    adcPinCfg.Pull = PORT_PIN_PULL_NONE;
-    adcPinCfg.Level = PORT_PIN_LEVEL_LOW;
-    adcPinCfg.DirectionChangeable = 0;
-    adcPinCfg.ModeChangeable = 0;
-
-    Port_ApplyPinConfig(&adcPinCfg);
-}
 
 void Adc_Init(const Adc_ConfigType* ConfigPtr)
 {
     if (ConfigPtr == NULL_PTR) return;
     // Initialize ADC peripheral based on ConfigPtr
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);  // DMA1 for ADC1/ADC2
-
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_ADC2, ENABLE); // Enable ADC clocks
     // Select ADC instance
-    ADC_TypeDef* adcInstance = NULL;
+
+    ADC_TypeDef* adcInstance = NULL_PTR;
     if (ConfigPtr->Instance == ADC_1) {
         adcInstance = ADC1;
     } else if (ConfigPtr->Instance == ADC_2) {
@@ -47,25 +34,10 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
         return; // Invalid ADC instance
     }
 
-    Adc_DeInit(adcInstance); // Reset ADC peripheral
-
-    // Configure all channel GPIOs 
-    for (uint8 i = 0; i < ConfigPtr->numChannels; i++) {
-        uint8 channel = ConfigPtr->Channel[i].ChannelId;   
-        uint8 portNum = (channel <= 7) ? PORT_ID_A :
-                        (channel <= 9) ? PORT_ID_B :
-                        (channel <= 15) ? PORT_ID_C : 0xFF;  
-        uint8 pinNum = (channel <= 7) ? channel :
-                       (channel <= 9) ? (channel - 8) :
-                       (channel <= 15) ? (channel - 10) : 0xFF;  
-        if (portNum != 0xFF && pinNum != 0xFF) {
-            Port_ConfigAdcPin(portNum, pinNum);
-        }
-    }
     // Initialize ADC peripheral
     ADC_InitStruct.ADC_Mode = ADC_Mode_Independent; // Independent mode for ADC1/ADC2
     ADC_InitStruct.ADC_ContinuousConvMode = (ConfigPtr->ConvMode == ADC_CONV_MODE_CONTINUOUS) ? ENABLE : DISABLE; // Single channel conversion
-    ADC_InitStruct.ADC_ScanConvMode = ENABLE; 
+    ADC_InitStruct.ADC_ScanConvMode = DISABLE; // Single channel
     ADC_InitStruct.ADC_ExternalTrigConv = (ConfigPtr->TriggerSource == ADC_TRIGG_SRC_SW) ? ADC_ExternalTrigConv_None : ADC_ExternalTrigConv_T1_CC1; // No external trigger
     ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right;
 
@@ -79,11 +51,17 @@ void Adc_Init(const Adc_ConfigType* ConfigPtr)
 
         if (ConfigPtr->Instance == ADC_1) {
             // ADC1 channels are 0–15
-            ADC_RegularChannelConfig(adcInstance, chanId, rank, samp);
+            ADC_RegularChannelConfig(adcInstance,
+                                     chanId,
+                                     rank,
+                                     samp);
         } else {
             // ADC2 channels are 16–31
-            ADC_RegularChannelConfig(adcInstance, chanId - 16, rank, samp);
-       23 }
+            ADC_RegularChannelConfig(adcInstance,
+                                     chanId - 16,
+                                     rank,
+                                     samp);
+        }
     }
 
     //Turn on ADC
@@ -100,8 +78,6 @@ void Adc_DeInit(void)
     ADC_DeInit(ADC2);
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, DISABLE);  // Disable DMA clock
 }
-        
-extern Adc_GroupDefType Adc_Groups[];
 
 Std_ReturnType Adc_SetupResultBuffer(Adc_GroupType Group, Adc_ValueGroupType* DataBufferPtr)
 {
@@ -125,37 +101,13 @@ Std_ReturnType Adc_SetupResultBuffer(Adc_GroupType Group, Adc_ValueGroupType* Da
 }
 
 void Adc_StartGroupConversion(Adc_GroupType Group){
-    // Check if group is valid
-    if (Group >= MAX_ADC_GROUPS) {
-        return; // Invalid group
-    }
-
-    // Get the ADC instance for the group
-    ADC_TypeDef* adcInstance = (Adc_Groups[Group].AdcInstance == ADC_1) ? ADC1 : ADC2;
-
-    // Start conversion
     const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[Group];
-    ADC_SoftwareStartConvCmd(adcInstance, ENABLE);
-
-    // Update group status
-    Adc_Groups[Group].Status = ADC_BUSY;
+    ADC_SoftwareStartConvCmd(cfg->ADCx, ENABLE);
 }
 
 void Adc_StopGroupConversion(Adc_GroupType Group){
-    // Check if group is valid
-    if (Group >= MAX_ADC_GROUPS) {
-        return; // Invalid group
-    }
-
-    // Get the ADC instance for the group
-    ADC_TypeDef* adcInstance = (Adc_Groups[Group].AdcInstance == ADC_1) ? ADC1 : ADC2;
-
-    // Stop conversion
     const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[Group];
-    ADC_SoftwareStartConvCmd(adcInstance, DISABLE);
-
-    // Update group status
-    Adc_Groups[Group].Status = ADC_IDLE;
+    ADC_SoftwareStartConvCmd(cfg->ADCx, DISABLE);
 }
 
 void Adc_ReadGroup(Adc_GroupType Group, Adc_ValueGroupType* DataBufferPtr)
@@ -271,7 +223,7 @@ void Adc_GetVersionInfo (Std_VersionInfoType* VersionInfo)
 
 void Adc_EnableGroupNotification(Adc_GroupType Group){
 
-    Adc_ConfigType* cfg = &Adc_Configs[Adc_GroupConfigs[Group].AdcInstance];
+    Adc_ConfigType* cfg = &Adc_Configs[Adc_Groups[Group].AdcInstance];
     cfg->NotificationEnable = ADC_NOTIFICATION_ON;
 
     // Enable the ADC interrupt for the group
@@ -285,7 +237,7 @@ void Adc_EnableGroupNotification(Adc_GroupType Group){
 }
 
 void Adc_DisableGroupNotification(Adc_GroupType Group){
-    Adc_ConfigType* cfg = &Adc_Configs[Adc_GroupConfigs[Group].AdcInstance];
+    Adc_ConfigType* cfg = &Adc_Configs[Adc_Groups[Group].AdcInstance];
     cfg->NotificationEnable = ADC_NOTIFICATION_OFF;
 
     // Disable the ADC interrupt for the group
@@ -294,6 +246,70 @@ void Adc_DisableGroupNotification(Adc_GroupType Group){
     } else if (cfg->Instance == ADC_2) {
         NVIC_DisableIRQ(ADC1_2_IRQn);
     }
+}
+
+Std_ReturnType Adc_SetupResultBuffer_Dma(Adc_GroupType group, Adc_ValueGroupType* buf)
+{
+    for (int i = 0; i < ADC_NUM_GROUPS_DMA; i++) {
+        if (AdcGroupDmaConfig[i].groupId == group) {
+            Adc_DmaBuffer[i] = buf;
+            return E_OK;
+        }
+    }
+    return E_NOT_OK;
+}
+
+
+Std_ReturnType Adc_EnableDma(Adc_GroupType group)
+{
+    for (int i = 0; i < ADC_NUM_GROUPS_DMA; i++) {
+        const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[i];
+        if (cfg->groupId != group) continue;
+
+        // 1. Tắt & reset DMA channel
+        DMA_Cmd(cfg->DMA_Channel, DISABLE);
+        DMA_DeInit(cfg->DMA_Channel);
+
+        // 2. Cấu hình DMA
+        DMA_InitTypeDef dinit;
+        DMA_StructInit(&dinit);
+        dinit.DMA_PeripheralBaseAddr = (uint32_t)&(cfg->ADCx->DR);
+        dinit.DMA_MemoryBaseAddr     = (uint32_t)Adc_DmaBuffer[i];
+        dinit.DMA_DIR                = DMA_DIR_PeripheralSRC;
+        dinit.DMA_BufferSize         = cfg->channelCount;
+        dinit.DMA_PeripheralInc      = DMA_PeripheralInc_Disable;
+        dinit.DMA_MemoryInc          = DMA_MemoryInc_Enable;
+        dinit.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
+        dinit.DMA_MemoryDataSize     = DMA_MemoryDataSize_HalfWord;
+        dinit.DMA_Mode               = DMA_Mode_Normal;
+        dinit.DMA_Priority           = DMA_Priority_High;
+        DMA_Init(cfg->DMA_Channel, &dinit);
+
+        // 3. Bật ngắt TC
+        DMA_ITConfig(cfg->DMA_Channel, DMA_IT_TC, ENABLE);
+        NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+        // 4. Bật DMA & ADC<->DMA link
+        DMA_Cmd(cfg->DMA_Channel, ENABLE);
+        ADC_DMACmd(cfg->ADCx, ENABLE);
+
+        return E_OK;
+    }
+    return E_NOT_OK;
+}
+
+Std_ReturnType Adc_DisableDma(Adc_GroupType group)
+{
+    for (int i = 0; i < ADC_NUM_GROUPS_DMA; i++) {
+        const Adc_GroupDmaConfigType* cfg = &AdcGroupDmaConfig[i];
+        if (cfg->groupId == group) {
+            ADC_DMACmd(cfg->ADCx, DISABLE);
+            DMA_Cmd(cfg->DMA_Channel, DISABLE);
+            DMA_ITConfig(cfg->DMA_Channel, DMA_IT_TC, DISABLE);
+            return E_OK;
+        }
+    }
+    return E_NOT_OK;
 }
 
 

@@ -8,9 +8,7 @@
 #include "stm32f10x.h"
 #include <stddef.h>
 
-
-
-const Pwm_ConfigType* Pwm_CurrentConfigPtr; // Global configuration structure pointer
+const Pwm_ConfigType* Pwm_CurrentConfigPtr = NULL_PTR;
 
 /**
  * @brief Returns the TIM peripheral associated with a given PWM channel.
@@ -326,19 +324,23 @@ void Pwm_SetOutputToIdle(Pwm_ChannelType ChannelNumber) {
  * @return The current output state of the PWM channel.
  */
 Pwm_OutputStateType Pwm_GetOutputState(Pwm_ChannelType ChannelNumber) {
-    const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
-    TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
-    
+    const Pwm_ChannelConfigType* cfg = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
+    TIM_TypeDef* tim = GetChannelTIM(cfg->Channel);
+
     uint16_t isOutputEnabled = 0;
-    switch (channelConfig->Channel % 4) {
+    switch (cfg->Channel % 4) {
         case 0: 
             isOutputEnabled = (tim->CCER & TIM_CCER_CC1E);
+            break;
         case 1: 
             isOutputEnabled = (tim->CCER & TIM_CCER_CC2E);
+            break;  
         case 2: 
             isOutputEnabled = (tim->CCER & TIM_CCER_CC3E);
+            break;
         case 3: 
             isOutputEnabled = (tim->CCER & TIM_CCER_CC4E);
+            break;
         default:
             break; // Invalid channel
     }
@@ -380,28 +382,39 @@ void Pwm_DisableNotification(Pwm_ChannelType ChannelNumber) {
  * @param Notification The type of edge notification to enable.
  */
 void Pwm_EnableNotification(Pwm_ChannelType ChannelNumber, Pwm_EdgeNotificationType Notification) {
-    const Pwm_ChannelConfigType* channelConfig = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
-    TIM_TypeDef* tim = GetChannelTIM(channelConfig->Channel);
+    if (ChannelNumber >= MAX_PWM_CHANNELS) {
+        return; // Invalid channel
+    }
+
+    Pwm_ChannelConfigType* cfg = &Pwm_CurrentConfigPtr->Channels[ChannelNumber];
+    TIM_TypeDef* tim = GetChannelTIM(cfg->Channel);
     if (tim == NULL_PTR) {
         return; // Invalid channel
     }
 
-    switch (channelConfig->Channel % 4) {
-        case 0:
-            TIM_ITConfig(tim, TIM_IT_CC1, ENABLE);
-            break;
-        case 1:
-            TIM_ITConfig(tim, TIM_IT_CC2, ENABLE);
-            break;
-        case 2:
-            TIM_ITConfig(tim, TIM_IT_CC3, ENABLE);
-            break;
-        case 3:
-            TIM_ITConfig(tim, TIM_IT_CC4, ENABLE);
-            break;
-        default:
-            break; // Invalid notification type
+    uint16_t cc_flag = TIM_IT_CC1 << (cfg->Channel - 1);
+
+    cfg->NotificationEnable = PWM_NOTIFICATION_ON; // Enable notification
+
+    if (Notification & PWM_RISING_EDGE){
+        TIM_ITConfig(tim, cc_flag, ENABLE);
     }
+    if (Notification & PWM_FALLING_EDGE) {
+        TIM_ITConfig(tim, TIM_IT_Update, ENABLE);
+    }
+    // Enable the TIM interrupt in NVIC
+    IRQn_Type irq = (tim == TIM2)? TIM2_IRQn :
+                    (tim == TIM3)? TIM3_IRQn :
+                    (tim == TIM4)? TIM4_IRQn : (IRQn_Type)0xFF;
+    if (irq != (IRQn_Type)0xFF) {
+        NVIC_InitTypeDef n;
+        n.NVIC_IRQChannel = irq;
+        n.NVIC_IRQChannelPreemptionPriority = 1;
+        n.NVIC_IRQChannelSubPriority = 0;
+        n.NVIC_IRQChannelCmd = ENABLE;
+        NVIC_Init(&n);
+    }
+
 }
 
 /**

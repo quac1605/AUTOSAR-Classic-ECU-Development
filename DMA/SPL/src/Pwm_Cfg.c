@@ -1,24 +1,23 @@
 #include "Pwm_Cfg.h"
 #include "stm32f10x_adc.h"
 
-void Pwm_Channel0_Notification(void){
-	blinkLed(); //để test
-}
 
-void Pwm_IsrHandler(TIM_TypeDef *TIMx)
+
+void TIM2_IRQHandler(void)
 {
-    for (uint8_t i = 0; i < PWM_NUM_CHANNELS; ++i) {
-        const Pwm_ChannelConfigType *cfg = &PwmChannelsConfig[i];
-        if (cfg->TIMx == TIMx) {
-            uint16_t flag = TIM_IT_CC1 << (cfg->channel - 1);
+    TIM_TypeDef *TIMx = TIM2; // Assuming TIM2 is used for PWM channels
+    for (uint8_t i = 0; i < MAX_PWM_CHANNELS; ++i) {
+        const Pwm_ChannelConfigType *cfg = &Pwm_CurrentConfigPtr->Channels[i];
+        if (GetChannelTIM(cfg->Channel) == TIMx) {
+            uint16_t flag = TIM_IT_CC1 << (cfg->Channel - 1);
             if (TIM_GetITStatus(TIMx, flag) != RESET) {
                 TIM_ClearITPendingBit(TIMx, flag);
-                if (cfg->notificationEnable && cfg->NotificationCb)
-                    cfg->NotificationCb(); đây chính là con trỏ hàm, cụ thể hơn chính là thằng Pwm_Channel0_Notification()
+                if (cfg->NotificationEnable && cfg->NotificationCb)
+                    cfg->NotificationCb(); // Call the notification callback if enabled
             }
             if (TIM_GetITStatus(TIMx, TIM_IT_Update) != RESET) {
                 TIM_ClearITPendingBit(TIMx, TIM_IT_Update);
-                if (cfg->notificationEnable && cfg->NotificationCb)
+                if (cfg->NotificationEnable && cfg->NotificationCb)
                     cfg->NotificationCb();
             }
         }
