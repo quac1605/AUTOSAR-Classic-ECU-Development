@@ -13,26 +13,21 @@ OBJCOPY = arm-none-eabi-objcopy
 # Include path và define macro
 CFLAGS = -mcpu=cortex-m3 -mthumb -O0 -g -Wall -ffreestanding -nostdlib \
          -ICMSIS \
-		 -IConfig \
-         -IMCAL/Dio \
-         -IMCAL/Port \
-         -IMCAL/Adc \
-         -IMCAL/Pwm \
+         -IConfig \
+         -IMCAL/Can \
+         -ICanif \
          -ISPL/inc \
          -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER
 
 # Linker script
 LDSCRIPT = Linker/stm32f103.ld
-LDFLAGS = -T$(LDSCRIPT) -nostdlib -Wl,--gc-sections
+LDFLAGS  = -T$(LDSCRIPT) -Wl,--gc-sections --specs=nano.specs
+LDLIBS   = -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group
 
 # Source files
 SRCS_C = main.c \
-         MCAL/Dio/Dio.c \
-         MCAL/Port/Port.c \
-		 MCAL/Adc/Adc.c \
-		 MCAL/Pwm/Pwm.c \
-		 Config/Adc_Cfg.c \
-		 Config/Pwm_Cfg.c \
+         MCAL/Can/can.c \
+         Canif/canif.c \
          $(wildcard SPL/src/*.c)
 SRCS_S = Startup/startup_stm32f103.s
 
@@ -57,7 +52,7 @@ $(BUILDDIR)/%.o: %.s
 
 # Link thành ELF (trong Tools/)
 $(TARGET).elf: $(OBJS) $(LDSCRIPT)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@
+	$(CC) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Tạo file .bin từ .elf (trong Tools/)
 $(TARGET).bin: $(TARGET).elf
@@ -69,7 +64,6 @@ flash: $(TARGET).bin
 
 # Xóa tất cả file build trong Tools/
 clean:
-	rm -rf $(BUILDDIR)/*.o $(TARGET).elf $(TARGET).bin
-	find $(BUILDDIR) -name "*.o" -type f -delete
-	
+	rm -rf $(BUILDDIR) $(TARGET).elf $(TARGET).bin
+
 .PHONY: all clean flash

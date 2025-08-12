@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "stm32f10x_can.h": "c",
+        "can.h": "c",
+        "string.h": "c"
+    }
+}
